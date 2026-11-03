@@ -71,6 +71,25 @@ body.bgimg .card{background:#12161bd9;backdrop-filter:blur(6px)}
 .stat{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px}
 .stat div{border:1px solid var(--line);border-radius:var(--r);padding:12px}
 .stat b{display:block;font:700 26px "Chakra Petch",sans-serif;color:var(--g)}
+.q-actions{display:flex;gap:6px;flex:none;flex-wrap:wrap}
+.q-actions .btn{padding:5px 10px}
+.time-badge{display:inline-flex;align-items:center;gap:6px;font-size:12px;padding:3px 9px;border:1px solid var(--line);border-radius:8px;color:var(--mu);font-variant-numeric:tabular-nums}
+.time-badge.due{color:var(--g);border-color:#39ff8866;background:#39ff8810}
+.time-badge.overdue{color:var(--o);border-color:#ff8a2b66;background:#ff8a2b10}
+.time-badge.complete{color:var(--g)}
+.quest-editor{margin-top:22px;padding-top:18px;border-top:1px solid var(--line);scroll-margin-top:20px}
+.quest-fields{display:grid;grid-template-columns:2fr 1fr 1fr;gap:12px}
+.quest-fields label,.time-fields label{display:flex;flex-direction:column;gap:6px;font-size:13px;color:var(--mu)}
+.quest-fields input,.quest-fields select,.time-fields input{width:100%}
+.time-fields{display:grid;grid-template-columns:1fr 1fr;gap:12px;max-width:520px;margin-top:12px}
+.quest-editor fieldset{border:0;padding:0;margin:12px 0}
+.quest-editor legend{font-size:13px;color:var(--mu);margin-bottom:6px}
+.quest-editor :disabled{opacity:.65;cursor:not-allowed}
+.editor-error{color:#ffb78a;margin:10px 0 0}
+.editor-error:empty{display:none}
+.all-quest .n{overflow-wrap:anywhere}
+.cloud-panel{margin-bottom:16px}.cloud-panel[hidden]{display:none}.cloud-panel form{display:grid;gap:10px;max-width:440px}.cloud-panel label{display:grid;gap:5px;font-size:13px;color:var(--mu)}.cloud-panel .actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}.cloud-panel p{overflow-wrap:anywhere}.cloud-status{font:inherit;cursor:pointer}.cloud-status.warn{border-color:var(--o);color:var(--o)}
+@media(max-width:560px){.quest-fields{grid-template-columns:1fr 1fr}.quest-fields .quest-name{grid-column:1/-1}.q{flex-wrap:wrap}.q>.n{flex-basis:calc(100% - 40px)}.q>.q-actions{margin-left:34px}.all-quest{flex-wrap:wrap}.all-quest>.n{flex-basis:100%}.time-fields{grid-template-columns:1fr 1fr}}
 </style>
 </head>
 <body>
@@ -78,13 +97,15 @@ body.bgimg .card{background:#12161bd9;backdrop-filter:blur(6px)}
   <header>
     <h1>LIFE RESET</h1>
     <div class="chips" id="chips"></div>
+    <button type="button" id="cloud-toggle" class="chip cloud-status" onclick="window.LifeCloud?.show()">☁ Chỉ lưu trên máy</button>
   </header>
+  <section id="cloud-panel" class="card cloud-panel" hidden aria-label="Tài khoản và đồng bộ"></section>
   <nav id="nav"></nav>
   <main id="main"></main>
 </div>
 <div id="toast" role="status"></div>
 <script>
-const K='lifereset.v1';
+let K='lifereset.v1';
 const $=s=>document.querySelector(s);
 const esc=s=>String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const dstr=d=>{const x=new Date(d);return x.getFullYear()+'-'+String(x.getMonth()+1).padStart(2,'0')+'-'+String(x.getDate()).padStart(2,'0')};
@@ -108,8 +129,8 @@ function load(){
   try{const s=JSON.parse(localStorage.getItem(K));if(s&&s.quests)return{...D,...s}}catch(e){}
   return D;
 }
-function save(){try{localStorage.setItem(K,JSON.stringify(S))}catch(e){}}
-let S=load(),tab='home',mi=0;
+function save(operation=null){try{localStorage.setItem(K,JSON.stringify(S))}catch(e){toast('Bộ nhớ trình duyệt đầy. Hãy xuất sao lưu trước khi đóng trang.')}window.LifeCloud?.localSave(S,operation)}
+let S=load(),tab='home',mi=0,editingQuestId=null,editingQuestOriginal=null,questDraft=null;
 
 // Chuỗi ngày và phạt Hard Mode, xử lý các ngày đã qua
 function rollover(){
@@ -125,7 +146,7 @@ function rollover(){
   }
   save();
 }
-const VERSION='1.3';
+const VERSION='1.5';
 const DN={1:'T2',2:'T3',3:'T4',4:'T5',5:'T6',6:'T7',0:'CN'},WD=[1,2,3,4,5,6,0];
 function appliesOn(q,d){if(q.o)return q.o===d;if(q.w&&q.w.length)return q.w.includes(new Date(d+'T12:00:00').getDay());return true}
 function sched(q){if(q.o)return 'Chỉ ngày '+fd(q.o);const w=q.w;if(!w||w.length>=7)return 'Hàng ngày';const l=WD.filter(x=>w.includes(x));const k=l.join();return k==='1,2,3,4,5'?'T2–T6':k==='6,0'?'T7, CN':l.map(x=>DN[x]).join(', ')}
@@ -134,7 +155,21 @@ function exportData(){const a=document.createElement('a');a.href=URL.createObjec
 function importData(inp){const f=inp.files[0];if(!f)return;const r=new FileReader();r.onload=()=>{try{const o=JSON.parse(r.result);if(!Array.isArray(o.quests))throw 0;if(!confirm('Thay toàn bộ dữ liệu hiện tại bằng file sao lưu này?'))return;localStorage.setItem(K,JSON.stringify(o));S=load();rollover();applyBg();render();toast('Đã nhập dữ liệu')}catch(e){toast('File sao lưu không hợp lệ')}};r.readAsText(f)}
 async function freshLoad(){try{await fetch(location.pathname,{cache:'reload'})}catch(e){}location.reload()}
 function lv(xp){let l=1,n=100;while(xp>=n){xp-=n;l++;n=100+(l-1)*50}return{l,cur:xp,need:n}}
-function todayQ(){const t=today();return S.quests.filter(q=>appliesOn(q,t))}
+function validTime(v){return typeof v==='string'&&/^([01]\d|2[0-3]):[0-5]\d$/.test(v)}
+function questTimes(q){const start=validTime(q.startTime)?q.startTime:'';return{start,end:start&&validTime(q.endTime)&&q.endTime>start?q.endTime:''}}
+function sortQuests(qs){return qs.slice().sort((a,b)=>(questTimes(a).start||'99:99').localeCompare(questTimes(b).start||'99:99'))}
+function timeLabel(q){const{start,end}=questTimes(q);return start?start+(end?'–'+end:''):'Không đặt giờ'}
+function timeState(q,done,now=new Date()){
+  if(done)return{kind:'complete',label:'Đã hoàn thành'};
+  const{start,end}=questTimes(q);if(!start)return{kind:'anytime',label:'Linh hoạt'};
+  const hm=String(now.getHours()).padStart(2,'0')+':'+String(now.getMinutes()).padStart(2,'0');
+  if(hm<start)return{kind:'upcoming',label:'Chưa đến giờ'};
+  if(end&&hm>=end)return{kind:'overdue',label:'Quá giờ'};
+  return{kind:'due',label:'Đến giờ thực hiện'};
+}
+function timeBadge(q,done){const st=timeState(q,done);return`<span class="time-badge ${st.kind}" data-time-id="${esc(q.id)}">${timeLabel(q)} · ${st.label}</span>`}
+function refreshTimeBadges(){const done=S.done[today()]||[];document.querySelectorAll('[data-time-id]').forEach(el=>{const q=S.quests.find(x=>x.id===el.dataset.timeId);if(!q)return;const st=timeState(q,done.includes(q.id));el.className='time-badge '+st.kind;el.textContent=timeLabel(q)+' · '+st.label})}
+function todayQ(){const t=today();return sortQuests(S.quests.filter(q=>appliesOn(q,t)))}
 function doneToday(){const tq=todayQ();return(S.done[today()]||[]).filter(id=>tq.some(q=>q.id==id))}
 function allDone(){const n=todayQ().length;return n>0&&doneToday().length>=n}
 function toast(m){const t=$('#toast');t.textContent=m;t.classList.add('on');clearTimeout(toast.h);toast.h=setTimeout(()=>t.classList.remove('on'),2200)}
@@ -155,19 +190,57 @@ function toggle(id){
   const now=allDone();
   if(!was&&now){addCoin(bonus());toast('Hoàn thành cả ngày! +'+bonus()+' coin thưởng chuỗi')}
   else if(was&&!now)addCoin(-bonus());
-  save();render();
+  save({type:'complete',day:t,questId:id,completed:i<0});render();
 }
 function addQ(){
-  const n=$('#qn').value.trim();if(!n)return;
-  const q={id:'q'+Date.now(),n,s:$('#qs').value,d:$('#qd').value},m=$('#qw').value;
-  if(m==='wk')q.w=[1,2,3,4,5];else if(m==='we')q.w=[6,0];
-  else if(m==='cus'){q.w=[...document.querySelectorAll('.dw:checked')].map(x=>+x.value);if(!q.w.length)return toast('Chọn ít nhất một ngày')}
-  else if(m==='once')q.o=$('#qo').value||today();
-  S.quests.push(q);save();render();
+  const fail=(message,id)=>{$('#quest-error').textContent=message;$(id).focus()};
+  const n=$('#qn').value.trim();if(!n)return fail('Nhập tên nhiệm vụ.','#qn');
+  const start=$('#qstart').value,end=$('#qend').value;
+  if(end&&!start)return fail('Chọn giờ bắt đầu trước khi đặt giờ kết thúc.','#qstart');
+  if(start&&!validTime(start)||end&&!validTime(end))return fail('Giờ phải có định dạng HH:mm.','#qstart');
+  if(end&&end<=start)return fail('Giờ kết thúc phải sau giờ bắt đầu trong cùng ngày.','#qend');
+  const old=editingQuestId?S.quests.find(q=>q.id===editingQuestId):null;
+  if(editingQuestId&&!old)return fail('Nhiệm vụ không còn tồn tại. Hãy hủy chỉnh sửa.','#qn');
+  if(old&&editingQuestOriginal&&!(window.LifeSyncCore?.equal(old,JSON.parse(editingQuestOriginal))??(JSON.stringify(old)===editingQuestOriginal)))return fail('Nhiệm vụ đã thay đổi trên thiết bị khác. Hãy hủy chỉnh sửa và mở lại để xem bản mới.','#qn');
+  const locked=old&&(S.done[today()]||[]).includes(old.id);
+  const q=old?{...old,n}:{id:'q'+Date.now()+'-'+Math.random().toString(36).slice(2,7),n};
+  if(!locked){
+    q.s=$('#qs').value;q.d=$('#qd').value;delete q.w;delete q.o;
+    const m=$('#qw').value;
+    if(m==='wk')q.w=[1,2,3,4,5];else if(m==='we')q.w=[6,0];
+    else if(m==='cus'){q.w=[...document.querySelectorAll('.dw:checked')].map(x=>+x.value);if(!q.w.length)return fail('Chọn ít nhất một ngày trong tuần.','#qw')}
+    else if(m==='once'){q.o=$('#qo').value;if(!q.o)return fail('Chọn ngày thực hiện.','#qo')}
+  }
+  if(start)q.startTime=start;else delete q.startTime;
+  if(end)q.endTime=end;else delete q.endTime;
+  if(old)S.quests[S.quests.findIndex(x=>x.id===old.id)]=q;else S.quests.push(q);
+  editingQuestId=null;editingQuestOriginal=null;questDraft=null;save();render();toast(old?'Đã lưu thay đổi nhiệm vụ':'Đã thêm nhiệm vụ');
 }
-function delQ(id,e){e.stopPropagation();if(!confirm('Xóa nhiệm vụ này?'))return;S.quests=S.quests.filter(q=>q.id!=id);save();render()}
+function editQ(id,e){e.stopPropagation();editingQuestId=id;editingQuestOriginal=JSON.stringify(S.quests.find(q=>q.id===id));questDraft=null;render();$('#quest-form').scrollIntoView({behavior:'auto',block:'center'});$('#qn').focus()}
+function cancelEdit(){editingQuestId=null;editingQuestOriginal=null;questDraft=null;render()}
+function questEditor(){
+  const q=questDraft||(editingQuestId?S.quests.find(x=>x.id===editingQuestId):null)||{};
+  const locked=editingQuestId&&(S.done[today()]||[]).includes(editingQuestId),disabled=locked?'disabled':'';
+  const days=q.w||[],wk=days.length===5&&[1,2,3,4,5].every(x=>days.includes(x)),we=days.length===2&&[6,0].every(x=>days.includes(x));
+  const mode=q._mode||(q.o?'once':wk?'wk':we?'we':days.length&&days.length<7?'cus':'all');
+  const {start,end}=questTimes(q);
+  return`<form id="quest-form" class="quest-editor" onsubmit="event.preventDefault();addQ()">
+    <h2>${editingQuestId?'Sửa nhiệm vụ':'Thêm nhiệm vụ'}</h2>
+    <div class="quest-fields"><label class="quest-name" for="qn">Tên nhiệm vụ<input type="text" id="qn" placeholder="Nhiệm vụ mới" required value="${esc(q.n||'')}"></label>
+    <label for="qs">Nhóm<select id="qs" ${disabled}>${Object.entries(STATS).map(([k,v])=>`<option value="${k}" ${k===(q.s||'dis')?'selected':''}>${v[0]}</option>`).join('')}</select></label>
+    <label for="qd">Độ khó<select id="qd" ${disabled}>${Object.entries(DIFF).map(([k,v])=>`<option value="${k}" ${k===(q.d||'e')?'selected':''}>${v[0]}</option>`).join('')}</select></label></div>
+    <div class="time-fields"><label for="qstart">Giờ bắt đầu<input type="time" id="qstart" step="60" value="${esc(start)}" aria-describedby="time-help"></label>
+    <label for="qend">Giờ kết thúc (tùy chọn)<input type="time" id="qend" step="60" value="${esc(end)}" aria-describedby="time-help"></label></div>
+    <p id="time-help" class="mu">Theo giờ trên thiết bị. Bỏ trống để làm bất kỳ lúc nào. Giờ kết thúc phải sau giờ bắt đầu trong cùng ngày. Chỉ đặt giờ bắt đầu thì nhiệm vụ giữ trạng thái đến giờ cho đến hết ngày.</p>
+    <fieldset ${disabled}><legend>Lịch thực hiện</legend><div class="row" style="margin-top:0;align-items:center"><select id="qw" aria-label="Lặp lại" onchange="schedUI()">${[['all','Lặp hàng ngày'],['wk','Thứ 2 đến Thứ 6'],['we','Thứ 7 và Chủ nhật'],['cus','Chọn ngày trong tuần'],['once','Chỉ một ngày']].map(([k,v])=>`<option value="${k}" ${mode===k?'selected':''}>${v}</option>`).join('')}</select>
+    <span id="qdays" style="display:${mode==='cus'?'flex':'none'}">${WD.map(v=>`<label class="mu"><input type="checkbox" class="dw" value="${v}" ${days.includes(v)?'checked':''}> ${DN[v]}</label>`).join('')}</span><input type="date" id="qo" aria-label="Ngày thực hiện" value="${esc(q.o||today())}" style="display:${mode==='once'?'':'none'}"></div></fieldset>
+    ${locked?'<p class="mu">Đã hoàn thành hôm nay: bạn có thể đổi tên và giờ. Nhóm, độ khó và lịch lặp được giữ nguyên để bảo toàn điểm đã nhận.</p>':''}
+    <p id="quest-error" class="editor-error" role="alert"></p><div class="row"><button class="btn" type="submit">${editingQuestId?'Lưu thay đổi':'Thêm'}</button>${editingQuestId?'<button class="btn s" type="button" onclick="cancelEdit()">Hủy chỉnh sửa</button>':''}</div>
+  </form>`;
+}
+function delQ(id,e){e.stopPropagation();if(!confirm('Xóa nhiệm vụ này?'))return;S.quests=S.quests.filter(q=>q.id!=id);if(editingQuestId===id){editingQuestId=null;questDraft=null}save();render()}
 function setHard(v){S.hard=v;save();toast(v?'Hard Mode bật: bỏ nhiệm vụ sẽ bị trừ XP':'Hard Mode tắt');render()}
-function resetAll(){if(confirm('Xóa toàn bộ dữ liệu và bắt đầu lại?')){localStorage.removeItem(K);S=load();render()}}
+function resetAll(){if(confirm('Xóa toàn bộ dữ liệu và bắt đầu lại? Nếu đang đăng nhập, thay đổi này cũng được đồng bộ sang các thiết bị khác.')){localStorage.removeItem(K);S=load();editingQuestId=null;questDraft=null;save();render()}}
 
 function radar(){
   const ks=Object.keys(STATS),mx=Math.ceil(Math.max(10,...ks.map(k=>S.stats[k]))/10)*10,C=150,R=100;
@@ -204,19 +277,15 @@ function home(){
   <div><b>${S.fullDays+(ad?1:0)}</b><span class="mu">Ngày hoàn thành 100%</span></div>
   <div><b>${Math.floor(fm/60)}g ${fm%60}p</b><span class="mu">Tổng thời gian tập trung</span></div></div></section>
   <section class="card full"><h2>Nhiệm vụ hôm nay (${dn.length}/${todayQ().length})</h2>
+    <p class="mu">Sắp xếp theo giờ bắt đầu; nhiệm vụ không đặt giờ ở cuối. Trạng thái thời gian tự cập nhật khi trang đang mở, không tự trừ điểm.</p>
     ${todayQ().length?todayQ().map(q=>{const d=dn.includes(q.id),[dl,xp,sp]=DIFF[q.d];
       return`<div class="q ${d?'d':''}" onclick="toggle('${q.id}')" role="checkbox" aria-checked="${d}" tabindex="0" onkeydown="if(event.target===this&&(event.key===' '||event.key==='Enter')){event.preventDefault();toggle('${q.id}')}">
       <span class="ck">✓</span><div class="n"><div class="qt">${esc(q.n)}</div><div class="qm"><span class="tag ${q.d}">${dl}</span>
-      <span class="mu">+${xp} XP · +${sp} ${STATS[q.s][0]} · +${COIN[q.d]} coin</span>${q.o||(q.w&&q.w.length&&q.w.length<7)?'<span class="mu">· '+sched(q)+'</span>':''}</div></div>
-      <button class="btn s" style="padding:4px 10px" onclick="delQ('${q.id}',event)">Xóa</button></div>`}).join(''):'<p class="mu">Hôm nay không có nhiệm vụ nào. Thêm nhiệm vụ bên dưới.</p>'}
-    <div class="row"><input type="text" id="qn" placeholder="Nhiệm vụ mới" onkeydown="if(event.key==='Enter')addQ()">
-      <select id="qs">${Object.entries(STATS).map(([k,v])=>`<option value="${k}">${v[0]}</option>`).join('')}</select>
-      <select id="qd">${Object.entries(DIFF).map(([k,v])=>`<option value="${k}">${v[0]}</option>`).join('')}</select>
-      <button class="btn" onclick="addQ()">Thêm</button></div>
-    <div class="row" style="align-items:center"><select id="qw" onchange="schedUI()"><option value="all">Lặp hàng ngày</option><option value="wk">Thứ 2 đến Thứ 6</option><option value="we">Thứ 7 và Chủ nhật</option><option value="cus">Chọn ngày trong tuần</option><option value="once">Chỉ một ngày</option></select>
-    <span id="qdays" style="display:none">${WD.map(v=>`<label class="mu"><input type="checkbox" class="dw" value="${v}"> ${DN[v]}</label>`).join('')}</span><input type="date" id="qo" value="${t}" style="display:none"></div>
+      <span class="mu">+${xp} XP · +${sp} ${STATS[q.s][0]} · +${COIN[q.d]} coin</span>${q.o||(q.w&&q.w.length&&q.w.length<7)?'<span class="mu">· '+sched(q)+'</span>':''}${timeBadge(q,d)}</div></div>
+      <span class="q-actions"><button type="button" class="btn s" onclick="editQ('${q.id}',event)" aria-label="Sửa ${esc(q.n)}">Sửa</button><button type="button" class="btn s" onclick="delQ('${q.id}',event)">Xóa</button></span></div>`}).join(''):'<p class="mu">Hôm nay không có nhiệm vụ nào. Thêm nhiệm vụ bên dưới.</p>'}
+    ${questEditor()}
   </section>
-  <section class="card full"><h2>Tất cả nhiệm vụ và lịch (${S.quests.length})</h2>${S.quests.map(q=>`<div class="f" style="align-items:center"><span>${esc(q.n)}<br><span class="mu">${sched(q)} · ${DIFF[q.d][0]} · ${STATS[q.s][0]}</span></span><button class="btn s" onclick="delQ('${q.id}',event)">Xóa</button></div>`).join('')||'<p class="mu">Chưa có nhiệm vụ.</p>'}</section>
+  <section class="card full"><h2>Tất cả nhiệm vụ và lịch (${S.quests.length})</h2>${sortQuests(S.quests).map(q=>`<div class="f all-quest" style="align-items:center"><span class="n">${esc(q.n)}<br><span class="mu">${sched(q)} · ${timeLabel(q)} · ${DIFF[q.d][0]} · ${STATS[q.s][0]}</span></span><span class="q-actions"><button type="button" class="btn s" onclick="editQ('${q.id}',event)" aria-label="Sửa ${esc(q.n)}">Sửa</button><button type="button" class="btn s" onclick="delQ('${q.id}',event)">Xóa</button></span></div>`).join('')||'<p class="mu">Chưa có nhiệm vụ.</p>'}</section>
   <section class="card full"><h2>Thẻ động lực hôm nay</h2><p class="mantra">${mantra}</p>
     <button class="btn s" onclick="mi++;render()">Rút thẻ khác</button>
     <button class="btn s" style="float:right" onclick="resetAll()">Xóa dữ liệu</button></section>
@@ -325,6 +394,37 @@ function render(){
   $('#main').innerHTML=TABS.find(t=>t[0]===tab)[2]();
 }
 rollover();S.quests=S.quests.filter(q=>!q.o||q.o>=today());applyBg();render();
+let scheduleDate=today();
+function refreshSchedule(){
+  if(today()!==scheduleDate){
+    if($('#quest-form')){questDraft={n:$('#qn').value,s:$('#qs').value,d:$('#qd').value,startTime:$('#qstart').value,endTime:$('#qend').value,_mode:$('#qw').value,w:[...document.querySelectorAll('.dw:checked')].map(x=>+x.value),o:$('#qo').value}}
+    scheduleDate=today();rollover();render();
+  }
+  refreshTimeBadges();
+}
+setInterval(refreshSchedule,15000);
+document.addEventListener('visibilitychange',()=>{if(!document.hidden)refreshSchedule()});
+window.addEventListener('focus',refreshSchedule);
+window.LifeReset={
+  getState:()=>JSON.parse(JSON.stringify(S)),
+  useStorage(key,initial){K=key;editingQuestId=null;editingQuestOriginal=null;questDraft=null;if(initial&&!localStorage.getItem(K))localStorage.setItem(K,JSON.stringify(initial));S=load();applyBg();render();return this.getState()},
+  applyState(next){
+    const active=document.activeElement,activeId=active?.id,range=active?.tagName==='TEXTAREA'||active?.type==='text'?[active.selectionStart,active.selectionEnd]:null;
+    const inputs=[...document.querySelectorAll('#main input[id],#main select[id],#main textarea[id]')].filter(el=>el.id!=='jt').map(el=>({id:el.id,value:el.value,checked:el.checked,type:el.type}));
+    const days=[...document.querySelectorAll('.dw:checked')].map(el=>el.value);
+    S=JSON.parse(JSON.stringify(next));localStorage.setItem(K,JSON.stringify(S));applyBg();render();
+    for(const x of inputs){const el=document.getElementById(x.id);if(el&&el.type===x.type){el.value=x.value;if(el.type==='checkbox')el.checked=x.checked}}
+    document.querySelectorAll('.dw').forEach(el=>el.checked=days.includes(el.value));if($('#qw'))schedUI();
+    const focus=activeId&&document.getElementById(activeId);if(focus){focus.focus({preventScroll:true});if(range)try{focus.setSelectionRange(...range)}catch(e){}}
+  },
+  afterConnect(){rollover()},
+  block(value){$('#main').inert=value},
+  notify:toast
+};
 </script>
+<script src="config.js"></script>
+<script src="vendor/supabase.js"></script>
+<script src="sync-core.js"></script>
+<script src="sync.js"></script>
 </body>
 </html>
